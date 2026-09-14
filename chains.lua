@@ -19,10 +19,10 @@
 * along with Ashita.  If not, see <https://www.gnu.org/licenses/>.
 --]]
 
-addon.name    = 'chains';
-addon.author  = 'Sippius - Original Ashita-v3 skillchains by Ivaar';
-addon.version = '0.8.2';
-addon.desc    = 'Display current skillchain options.';
+addon.name     = 'chains';
+addon.author   = 'Sippius - Original Ashita-v3 skillchains by Ivaar';
+addon.version  = '0.9';
+addon.desc     = 'Display current skillchain options.';
 
 require('common');
 local ffi = require('ffi');
@@ -31,15 +31,16 @@ local imgui = require('imgui');
 local settings = require('settings');
 
 local skills = require('skills');
+local isDuplicate = require('packet-dedupe');
 
 --=============================================================================
 -- Addon Variables
 --=============================================================================
-local default_settings = T {
+local default_settings = T{
     position_x = 100,
     position_y = 100,
     font_scale = 1.0,
-    display = T {
+    display = T{
         color = true,
         pet = true,
         spell = true,
@@ -47,15 +48,15 @@ local default_settings = T {
     },
 };
 
-local chains = T {
+local chains = T{
     settings = settings.load(default_settings),
     visible = false,
     move = nil,
 
     debug = false,
-    forceAeonic = 0,        -- set from 0 to 3
+    forceAeonic = 0, -- set from 0 to 3
     forceImmanence = false, -- boolean
-    forceAffinity = false,  -- boolean
+    forceAffinity = false, -- boolean
 };
 
 -- store player ID
@@ -67,7 +68,7 @@ local playerID;
 -- * capture wepskill on 0xAC packet or first GetSkillchains call
 -- * capture petskill on 0xAC packet or first GetSkillchains call
 -- * capture schskill on load
-local actionTable = T {
+local actionTable = T{
     schskill = skills.immanence,
 };
 
@@ -75,105 +76,105 @@ local actionTable = T {
 -- * player/buff added through action packet
 -- * buff deleted through action packet when used or through presentevent on timeout
 -- * player deleted through present event when no buff active
-local playerTable = T {
+local playerTable = T{
 };
 
 -- store per target information on properties and duration
 -- * target added through action packet
 -- * target deleted through present event on timeout
-local targetTable = T {
+local targetTable = T{
 };
 
 -- static information on skillchains
-local chainInfo = T {
-    Radiance      = T { level = 4, burst = T { 'Fire', 'Wind', 'Lightning', 'Light' } },
-    Umbra         = T { level = 4, burst = T { 'Earth', 'Ice', 'Water', 'Dark' } },
-    Light         = T { level = 3, burst = T { 'Fire', 'Wind', 'Lightning', 'Light' },
-        aeonic = T { level = 4, skillchain = 'Radiance' },
-        Light  = T { level = 4, skillchain = 'Light' },
+local chainInfo = T{
+    Radiance = T{level = 4, burst = T{'Fire','Wind','Lightning','Light'}},
+    Umbra    = T{level = 4, burst = T{'Earth','Ice','Water','Dark'}},
+    Light    = T{level = 3, burst = T{'Fire','Wind','Lightning','Light'},
+        aeonic = T{level = 4, skillchain = 'Radiance'},
+        Light  = T{level = 4, skillchain = 'Light'},
     },
-    Darkness      = T { level = 3, burst = T { 'Earth', 'Ice', 'Water', 'Dark' },
-        aeonic   = T { level = 4, skillchain = 'Umbra' },
-        Darkness = T { level = 4, skillchain = 'Darkness' },
+    Darkness = T{level = 3, burst = T{'Earth','Ice','Water','Dark'},
+        aeonic   = T{level = 4, skillchain = 'Umbra'},
+        Darkness = T{level = 4, skillchain = 'Darkness'},
     },
-    Gravitation   = T { level = 2, burst = T { 'Earth', 'Dark' },
-        Distortion    = T { level = 3, skillchain = 'Darkness' },
-        Fragmentation = T { level = 2, skillchain = 'Fragmentation' },
+    Gravitation = T{level = 2, burst = T{'Earth','Dark'},
+        Distortion    = T{level = 3, skillchain = 'Darkness'},
+        Fragmentation = T{level = 2, skillchain = 'Fragmentation'},
     },
-    Fragmentation = T { level = 2, burst = T { 'Wind', 'Lightning' },
-        Fusion     = T { level = 3, skillchain = 'Light' },
-        Distortion = T { level = 2, skillchain = 'Distortion' },
+    Fragmentation = T{level = 2, burst = T{'Wind','Lightning'},
+        Fusion     = T{level = 3, skillchain = 'Light'},
+        Distortion = T{level = 2, skillchain = 'Distortion'},
     },
-    Distortion    = T { level = 2, burst = T { 'Ice', 'Water' },
-        Gravitation = T { level = 3, skillchain = 'Darkness' },
-        Fusion      = T { level = 2, skillchain = 'Fusion' },
+    Distortion = T{level = 2, burst = T{'Ice','Water'},
+        Gravitation = T{level = 3, skillchain = 'Darkness'},
+        Fusion      = T{level = 2, skillchain = 'Fusion'},
     },
-    Fusion        = T { level = 2, burst = T { 'Fire', 'Light' },
-        Fragmentation = T { level = 3, skillchain = 'Light' },
-        Gravitation   = T { level = 2, skillchain = 'Gravitation' },
+    Fusion = T{level = 2, burst = T{'Fire','Light'},
+        Fragmentation = T{level = 3, skillchain = 'Light'},
+        Gravitation   = T{level = 2, skillchain = 'Gravitation'},
     },
-    Compression   = T { level = 1, burst = T { 'Darkness' },
-        Transfixion = T { level = 1, skillchain = 'Transfixion' },
-        Detonation  = T { level = 1, skillchain = 'Detonation' },
+    Compression = T{level = 1, burst = T{'Darkness'},
+        Transfixion = T{level = 1, skillchain = 'Transfixion'},
+        Detonation  = T{level = 1, skillchain = 'Detonation'},
     },
-    Liquefaction  = T { level = 1, burst = T { 'Fire' },
-        Impaction = T { level = 2, skillchain = 'Fusion' },
-        Scission  = T { level = 1, skillchain = 'Scission' },
+    Liquefaction = T{level = 1, burst = T{'Fire'},
+        Impaction = T{level = 2, skillchain = 'Fusion'},
+        Scission  = T{level = 1, skillchain = 'Scission'},
     },
-    Induration    = T { level = 1, burst = T { 'Ice' },
-        Reverberation = T { level = 2, skillchain = 'Fragmentation' },
-        Compression   = T { level = 1, skillchain = 'Compression' },
-        Impaction     = T { level = 1, skillchain = 'Impaction' },
+    Induration = T{level = 1, burst = T{'Ice'},
+        Reverberation = T{level = 2, skillchain = 'Fragmentation'},
+        Compression   = T{level = 1, skillchain = 'Compression'},
+        Impaction     = T{level = 1, skillchain = 'Impaction'},
     },
-    Reverberation = T { level = 1, burst = T { 'Water' },
-        Induration = T { level = 1, skillchain = 'Induration' },
-        Impaction  = T { level = 1, skillchain = 'Impaction' },
+    Reverberation = T{level = 1, burst = T{'Water'},
+        Induration = T{level = 1, skillchain = 'Induration'},
+        Impaction  = T{level = 1, skillchain = 'Impaction'},
     },
-    Transfixion   = T { level = 1, burst = T { 'Light' },
-        Scission      = T { level = 2, skillchain = 'Distortion' },
-        Reverberation = T { level = 1, skillchain = 'Reverberation' },
-        Compression   = T { level = 1, skillchain = 'Compression' },
+    Transfixion = T{level = 1, burst = T{'Light'},
+        Scission      = T{level = 2, skillchain = 'Distortion'},
+        Reverberation = T{level = 1, skillchain = 'Reverberation'},
+        Compression   = T{level = 1, skillchain = 'Compression'},
     },
-    Scission      = T { level = 1, burst = T { 'Earth' },
-        Liquefaction  = T { level = 1, skillchain = 'Liquefaction' },
-        Reverberation = T { level = 1, skillchain = 'Reverberation' },
-        Detonation    = T { level = 1, skillchain = 'Detonation' },
+    Scission = T{level = 1, burst = T{'Earth'},
+        Liquefaction  = T{level = 1, skillchain = 'Liquefaction'},
+        Reverberation = T{level = 1, skillchain = 'Reverberation'},
+        Detonation    = T{level = 1, skillchain = 'Detonation'},
     },
-    Detonation    = T { level = 1, burst = T { 'Wind' },
-        Compression = T { level = 2, skillchain = 'Gravitation' },
-        Scission    = T { level = 1, skillchain = 'Scission' },
+    Detonation = T{level = 1, burst = T{'Wind'},
+        Compression = T{level = 2, skillchain = 'Gravitation'},
+        Scission    = T{level = 1, skillchain = 'Scission'},
     },
-    Impaction     = T { level = 1, burst = T { 'Lightning' },
-        Liquefaction = T { level = 1, skillchain = 'Liquefaction' },
-        Detonation   = T { level = 1, skillchain = 'Detonation' },
+    Impaction = T{level = 1, burst = T{'Lightning'},
+        Liquefaction = T{level = 1, skillchain = 'Liquefaction'},
+        Detonation   = T{level = 1, skillchain = 'Detonation'},
     },
 };
 
 -- IMGUI RGB color format {red, green, blue, alpha}
-local colors = {};                             -- Color codes by Sammeh
-colors.Light = { 1.0, 1.0, 1.0, 1.0 };         --'0xFFFFFFFF';
-colors.Dark = { 0.0, 0.0, 0.8, 1.0 };          --'0x0000CCFF';
-colors.Ice = { 0.0, 1.0, 1.0, 1.0 };           --'0x00FFFFFF';
-colors.Water = { 0.0, 1.0, 1.0, 1.0 };         --'0x00FFFFFF';
-colors.Earth = { 0.6, 0.5, 0.0, 1.0 };         --'0x997600FF';
-colors.Wind = { 0.4, 1.0, 0.4, 1.0 };          --'0x66FF66FF';
-colors.Fire = { 1.0, 0.0, 0.0, 1.0 };          --'0xFF0000FF';
-colors.Lightning = { 1.0, 0.0, 1.0, 1.0 };     --'0xFF00FFFF';
-colors.Gravitation = { 0.4, 0.2, 0.0, 1.0 };   --'0x663300FF';
+local colors = {};           -- Color codes by Sammeh
+colors.Light =         { 1.0, 1.0, 1.0, 1.0 }; --'0xFFFFFFFF';
+colors.Dark =          { 0.0, 0.0, 0.8, 1.0 }; --'0x0000CCFF';
+colors.Ice =           { 0.0, 1.0, 1.0, 1.0 }; --'0x00FFFFFF';
+colors.Water =         { 0.0, 1.0, 1.0, 1.0 }; --'0x00FFFFFF';
+colors.Earth =         { 0.6, 0.5, 0.0, 1.0 }; --'0x997600FF';
+colors.Wind =          { 0.4, 1.0, 0.4, 1.0 }; --'0x66FF66FF';
+colors.Fire =          { 1.0, 0.0, 0.0, 1.0 }; --'0xFF0000FF';
+colors.Lightning =     { 1.0, 0.0, 1.0, 1.0 }; --'0xFF00FFFF';
+colors.Gravitation =   { 0.4, 0.2, 0.0, 1.0 }; --'0x663300FF';
 colors.Fragmentation = { 1.0, 0.6, 1.0, 1.0 }; --'0xFA9CF7FF';
-colors.Fusion = { 1.0, 0.4, 0.4, 1.0 };        --'0xFF6666FF';
-colors.Distortion = { 0.2, 0.6, 1.0, 1.0 };    --'0x3399FFFF';
-colors.Darkness = colors.Dark;
-colors.Umbra = colors.Dark;
-colors.Compression = colors.Dark;
-colors.Radiance = colors.Light;
-colors.Transfixion = colors.Light;
-colors.Induration = colors.Ice;
+colors.Fusion =        { 1.0, 0.4, 0.4, 1.0 }; --'0xFF6666FF';
+colors.Distortion =    { 0.2, 0.6, 1.0, 1.0 }; --'0x3399FFFF';
+colors.Darkness =      colors.Dark;
+colors.Umbra =         colors.Dark;
+colors.Compression =   colors.Dark;
+colors.Radiance =      colors.Light;
+colors.Transfixion =   colors.Light;
+colors.Induration =    colors.Ice;
 colors.Reverberation = colors.Water;
-colors.Scission = colors.Earth;
-colors.Detonation = colors.Wind;
-colors.Liquefaction = colors.Fire;
-colors.Impaction = colors.Lightning;
+colors.Scission =      colors.Earth;
+colors.Detonation =    colors.Wind;
+colors.Liquefaction =  colors.Fire;
+colors.Impaction =     colors.Lightning;
 
 local statusID = {
     AL  = 163, -- Azure Lore
@@ -184,31 +185,37 @@ local statusID = {
     IM  = 470  -- Immanence
 };
 
-local MessageTypes = T {
+local MessageTypes = T{
     2,   -- '<caster> casts <spell>. <target> takes <amount> damage'
-    --100, -- 'The <player> uses ..' -- Causes Super Jump to match as Spinning Axe if enabled
+  --100, -- 'The <player> uses ..' -- Causes Super Jump to match as Spinning Axe if enabled
     110, -- '<user> uses <ability>. <target> takes <amount> damage.'
-    --161, -- Additional effect: <number> HP drained from <target>.
-    --162, -- Additional effect: <number> MP drained from <target>.
+  --161, -- Additional effect: <number> HP drained from <target>.
+  --162, -- Additional effect: <number> MP drained from <target>.
     185, -- 'player uses, target takes 10 damage. DEFAULT'
     187, -- '<user> uses <skill>. <amount> HP drained from <target>'
     317, -- 'The <player> uses .. <target> takes .. points of damage.'
-    --529, -- '<user> uses <ability>. <target> is chainbound.',
+  --529, -- '<user> uses <ability>. <target> is chainbound.',
     802  -- 'The <user> uses <skill>. <number> HP drained from <target>.'
 }
 
-local PetMessageTypes = T {
+local PetMessageTypes = T{
+	--Merge from ccoulton:
+	--Added 0 (uncommented), may actually be unnecessary
+	--Added 185/306 (commented)
+    0,   -- '<pet> Readies <ability>.'
+    --185, -- '<pet> uses <ability> takes <amount> damage.'
     110, -- '<user> uses <ability>. <target> takes <amount> damage.'
+    -- 306, -- '<player> uses <ability>. <pet> recovers <amount> damage.'
     317  -- 'The <player> uses .. <target> takes .. points of damage.'
 };
 
-local ChainBuffTypes = T {
+local ChainBuffTypes = T{
     [statusID.AL] = { duration = 30 }, -- 40 with relic hands
     [statusID.CA] = { duration = 30 },
     [statusID.IM] = { duration = 60 }
 };
 
-local EquipSlotNames = T {
+local EquipSlotNames = T{
     [1] = 'Main',
     --[2] = 'Sub',
     [3] = 'Range',
@@ -227,7 +234,7 @@ local EquipSlotNames = T {
     --[16] = 'Back'
 };
 
-local SkillPropNames = T {
+local SkillPropNames = T{
     [1] = 'Light',
     [2] = 'Darkness',
     [3] = 'Gravitation',
@@ -249,7 +256,7 @@ local SkillPropNames = T {
 --=============================================================================
 -- Registers a callback for the settings to monitor for character switches.
 --=============================================================================
-settings.register('settings', 'settings_update', function(s)
+settings.register('settings', 'settings_update', function (s)
     if (s ~= nil) then
         chains.settings = s;
     end
@@ -285,7 +292,7 @@ local GetBuffCount = function(matchBuff)
         local matchText = string.lower(matchBuff);
         for _, buff in pairs(buffs) do
             local buffString = AshitaCore:GetResourceManager():GetString("buffs.names", buff);
-            if (buffString ~= nil) and (string.lower(buffString) == matchText) then
+			if (buffString ~= nil) and (string.lower(buffString) == matchText) then
                 count = count + 1;
             end
         end
@@ -372,10 +379,10 @@ end
 ---@return table skillTable Currently available weapon skills
 --=============================================================================
 local GetWeaponskills = function()
-    local skillTable = T {};
+    local skillTable = T{};
     local pPlayer = AshitaCore:GetMemoryManager():GetPlayer();
 
-    for k, v in pairs(skills[3]) do
+    for k,v in pairs(skills[3]) do
         if v and pPlayer:HasWeaponSkill(k) then
             skillTable:append(v);
         end
@@ -389,22 +396,22 @@ end
 ---@return table skillTable Currently available pet skills
 --=============================================================================
 local function GetPetskills()
-    local skillTable = T {};
+    local skillTable = T{};
     local pPlayer = AshitaCore:GetMemoryManager():GetPlayer();
 
-    for k, v in pairs(skills.playerPet) do
-        if v and pPlayer:HasAbility(k + 512) then
+    for k,v in pairs(skills.playerPet) do
+        if v and pPlayer:HasAbility(k+512) then
             skillTable:append(v);
         end
     end
 
     return skillTable;
-end
+  end
 
 --=============================================================================
 -- Define blu offset data for use by GetBluskills()
 --=============================================================================
-local blu = {
+  local blu = {
     offset = ffi.cast('uint32_t*',
         ashita.memory.find('FFXiMain.dll', 0, 'C1E1032BC8B0018D????????????B9????????F3A55F5E5B', 10, 0))
 };
@@ -416,22 +423,22 @@ local blu = {
 -- based on code from blusets by Atom0s
 --=============================================================================
 function GetBluskills()
-    local skillTable = T {};
+    local skillTable = T{};
 
     local ptr = ashita.memory.read_uint32(AshitaCore:GetPointerManager():Get('inventory'));
     if (ptr == 0) then
-        return T {};
+        return T{ };
     end
     ptr = ashita.memory.read_uint32(ptr);
     if (ptr == 0) then
-        return T {};
+        return T{ };
     end
     --local spellTable = T(ashita.memory.read_array((ptr + blu.offset[0]) + (blu.is_blu_main() and 0x04 or 0xA0), 0x14));
     local spellTable = T(ashita.memory.read_array((ptr + blu.offset[0]) + 0x04, 0x14));
 
-    for _, v in pairs(spellTable) do
-        if skills[4][v + 512] then
-            skillTable:append(skills[4][v + 512]);
+    for _,v in pairs(spellTable) do
+        if skills[4][v+512] then
+            skillTable:append(skills[4][v+512]);
         end
     end
 
@@ -456,13 +463,13 @@ end
 local GetAeonicProperty = function(action, actor)
     local propertyTable = table.copy(action.skillchain);
 
-    if action.aeonic and (action.weapon or chains.forceAeonic > 0) and actor == playerID and GetAftermathLevel() > 0 then
+    if action.aeonic and (action.weapon or chains.forceAeonic > 0) and actor == playerID and GetAftermathLevel()>0 then
         local main = GetEquipment().Main;
         local range = GetEquipment().Range;
         local validMain = action.weapon == (main and main.Name) or chains.forceAeonic > 0;
         local validRange = action.weapon == (range and range.Name);
         if validMain or validRange then
-            table.insert(propertyTable, 1, action.aeonic);
+            table.insert(propertyTable,1,action.aeonic);
         end
     end
 
@@ -475,16 +482,16 @@ end
 ---@return table chainTable Current skillchain options
 --=============================================================================
 local GetSkillchains = function(target)
-    local actions = T {};
-    local chainTable = T {};
-    local levelTable = T { {}, {}, {}, {} };
+    local actions = T{};
+    local chainTable = T{};
+    local levelTable = T{{},{},{},{}};
 
     local mainJob = GetPlayer().MainJob;
     local enableSCH = mainJob == 'SCH' and ((playerTable[playerID] and playerTable[playerID][statusID.IM]) or
-        chains.forceImmanence);
+                                            chains.forceImmanence);
     local enableBLU = mainJob == 'BLU' and ((playerTable[playerID] and playerTable[playerID][statusID.AL]) or
-        (playerTable[playerID] and playerTable[playerID][statusID.CA]) or
-        chains.forceAffinity);
+                                            (playerTable[playerID] and playerTable[playerID][statusID.CA]) or
+                                            chains.forceAffinity);
 
     -- Create weaponskill table if it does not already exist
     -- Will update through incoming 0xAC packets
@@ -494,8 +501,8 @@ local GetSkillchains = function(target)
 
     -- Create petskill table if it does not already exist
     -- Will update through incoming 0xAC packets
-    if T { 'BST', 'SMN' }:contains(mainJob) and not actionTable.petskill then
-        actionTable.petskill = GetPetskills();
+    if T{ 'BST', 'SMN' }:contains(mainJob) and not actionTable.petskill then
+            actionTable.petskill = GetPetskills();
     end
 
     -- Create bluskill table if it does not already exist
@@ -510,7 +517,7 @@ local GetSkillchains = function(target)
     end
 
     -- Add skill tables based on job and active buffs
-    if chains.settings.display.pet and mainJob:any('BST', 'SMN') and actionTable.petskill then
+    if chains.settings.display.pet and mainJob:any('BST','SMN') and actionTable.petskill then
         actions = actions:extend(actionTable.petskill);
     elseif chains.settings.display.spell and enableBLU and actionTable.bluskill then
         actions = actions:extend(actionTable.bluskill);
@@ -520,16 +527,16 @@ local GetSkillchains = function(target)
 
     -- Search for valid skillchains and store into a table per skillchain level
     -- iterate over current abilities
-    for _, action in pairs(actions) do
+    for _,action in pairs(actions) do
         -- insert aeonic property
-        local actionProperty = GetAeonicProperty(action, playerID);
+        local actionProperty = GetAeonicProperty(action,playerID);
 
         -- iterate over 1st property (target property)
-        for _, prop1 in pairs(target.property) do
+        for _,prop1 in pairs(target.property) do
             local match = nil;
 
             -- iterate over 2nd property (action property) and exit after first match
-            for _, prop2 in pairs(actionProperty) do
+            for _,prop2 in pairs(actionProperty) do
                 match = chainInfo[prop1][prop2];
                 if match then break end
             end
@@ -547,16 +554,16 @@ local GetSkillchains = function(target)
                     outText = ('%-17s>> Lv.%d'):fmt(action.en, match.level),
                     outProp = match.skillchain,
                 }
-                table.insert(levelTable[match.level], skillchain);
+                table.insert(levelTable[match.level],skillchain);
                 break;
             end;
         end
     end
 
     -- Sort results to a single table based on skillchain level
-    for x = 4, 1, -1 do
-        for _, v in pairs(levelTable[x]) do
-            table.insert(chainTable, v);
+    for x=4,1,-1 do
+        for _,v in pairs(levelTable[x]) do
+            table.insert(chainTable,v);
         end
     end
 
@@ -568,7 +575,7 @@ end
 -- This would trigger on weapon, ability and pet changes
 --=============================================================================
 local function ResetSkillchains()
-    for _, v in pairs(targetTable) do
+    for _,v in pairs(targetTable) do
         v.skillchains = nil;
     end
 end
@@ -648,24 +655,24 @@ function ParseActionPacket(e)
         return value;
     end
 
-    local pendingActionPacket = T {};
+    local pendingActionPacket = T{};
     bitData = e.data_raw;
     bitOffset = 40;
 
     pendingActionPacket.UserId = UnpackBits(32);
     local targetCount = UnpackBits(6);
-    bitOffset = bitOffset + 4;               --Unknown 4 bits
+    bitOffset = bitOffset + 4; --Unknown 4 bits
     pendingActionPacket.Type = UnpackBits(4);
     pendingActionPacket.Id = UnpackBits(32); --{unknown[15:0], param[15:0]}
-    bitOffset = bitOffset + 32;              --Unknown 32 bits --{recast[31:0]}?
+    bitOffset = bitOffset + 32; --Unknown 32 bits --{recast[31:0]}?
 
-    pendingActionPacket.Targets = T {};
-    for i = 1, targetCount do
-        local target = T {};
+    pendingActionPacket.Targets = T{};
+    for i = 1,targetCount do
+        local target = T{};
         target.Id = UnpackBits(32);
         local actionCount = UnpackBits(4);
-        target.Actions = T {};
-        for j = 1, actionCount do
+        target.Actions = T{};
+        for j = 1,actionCount do
             local action = {};
             action.Reaction = UnpackBits(5);
             action.Animation = UnpackBits(12);
@@ -701,7 +708,7 @@ function ParseActionPacket(e)
     if (maxLength == 0) then
         Error(string.format('Malformed action packet detected.  Type:$H%u$R User:$H%u$R Targets:$H%u$R',
             pendingActionPacket.Type, pendingActionPacket.UserId, #pendingActionPacket.Targets));
-        pendingActionPacket.Targets = T {}; --Blank targets so that it doesn't register bad info later.
+         pendingActionPacket.Targets = T{}; --Blank targets so that it doesn't register bad info later.
     end
 
     return pendingActionPacket;
@@ -711,7 +718,7 @@ end
 -- event: load
 -- desc: Event called when the addon is being loaded.
 --=============================================================================
-ashita.events.register('load', 'load_cb', function()
+ashita.events.register('load', 'load_cb', function ()
     playerID = AshitaCore:GetMemoryManager():GetParty():GetMemberServerId(0);
 end);
 
@@ -719,7 +726,7 @@ end);
 -- event: unload
 -- desc: Event called when the addon is being unloaded.
 --=============================================================================
-ashita.events.register('unload', 'unload_cb', function()
+ashita.events.register('unload', 'unload_cb', function ()
     settings.save();
 end);
 
@@ -727,7 +734,7 @@ end);
 -- event: packet_in
 -- desc: Event called when the addon is processing incoming packets.
 --=============================================================================
-ashita.events.register('packet_in', 'packet_in_cb', function(e)
+ashita.events.register('packet_in', 'packet_in_cb', function (e)
     --[[ Valid Arguments
         e.id                 - (ReadOnly) The id of the packet.
         e.size               - (ReadOnly) The size of the packet.
@@ -753,16 +760,22 @@ ashita.events.register('packet_in', 'packet_in_cb', function(e)
         [7] = 'Weapon Skill start',
         [8] = 'Casting start',
         [9] = 'Item start',
-        [11] = 'NPC TP finish',
+        [11] = 'NPC/BstPet TP finish',
         [12] = 'Ranged attack start',
         [13] = 'Avatar TP finish',
         [14] = 'Job Ability DNC',
         [15] = 'Job Ability RUN',
     --]]
+
+    if (isDuplicate(e)) then
+        return;
+    end
+
     if e.id == 0x28 then
+
         -- Save a little bit of processing for packets that won't relate to SC..
         local type = ashita.bits.unpack_be(e.data_raw, 82, 4); -- byte: 0xA, bit: 0x2
-        if not T { 3, 4, 6, 11, 13, 14 }:contains(type) then
+        if not T{ 3, 4, 6, 11, 13, 14 }:contains(type) then
             return;
         end
 
@@ -771,9 +784,11 @@ ashita.events.register('packet_in', 'packet_in_cb', function(e)
         -- Only the primary target and action are parsed assuming that is all that apply
         local actor = actionPacket.UserId;
         local target = actionPacket.Targets[1];
-
+        -- exit if actor is not in alliance
+        if not (isPlayerInAlliance(actor) or isPetInAlliance(actor)) then
+            return;
         -- exit if target is nil due to corrupted packet
-        if not target then
+        elseif not target then
             return;
         end
 
@@ -784,12 +799,12 @@ ashita.events.register('packet_in', 'packet_in_cb', function(e)
         local category = PetMessageTypes:contains(targetAction.Message) and 13 or actionPacket.Type;
 
         -- capture valid action skill and added effect property if there is a match
-        local actionSkill = skills[category] and skills[category][bit.band(actionPacket.Id, 0xFFFF)];
+        local actionSkill = skills[category] and skills[category][bit.band(actionPacket.Id,0xFFFF)];
         local effectProperty = targetAction.AdditionalEffect and
             SkillPropNames[bit.band(targetAction.AdditionalEffect.Damage, 0x3F)];
 
         --debug ===============================================================
-        if chains.debug and T { 3, 6, 13, 14 }:contains(actionPacket.Type) then
+        if chains.debug and T{ 3, 6, 11, 13, 14 }:contains(actionPacket.Type) then
             local out = ('Type: %s -> %s, Id: %s'):fmt(actionPacket.Type, category, actionPacket.Id);
             if actionSkill then
                 out = out .. (' Skill: %s'):fmt(actionSkill.en);
@@ -808,10 +823,10 @@ ashita.events.register('packet_in', 'packet_in_cb', function(e)
         end
         --=====================================================================
 
-        -- exit if actor is not in alliance
-        if not (isPlayerInAlliance(actor) or isPetInAlliance(actor)) then
-            return;
-        end
+
+
+
+
 
         -- Check for valid action skill with valid added effect propery - after first setp
         if actionSkill and effectProperty then
@@ -826,40 +841,40 @@ ashita.events.register('packet_in', 'packet_in_cb', function(e)
             local closed = level == 4;
 
             targetTable[target.Id] = {
-                en = actionSkill.en,
-                property = { effectProperty },
-                ts = os.time(),
-                dur = 8 - step + delay,
-                wait = delay,
-                step = step,
-                closed = closed,
+                en=actionSkill.en,
+                property={effectProperty},
+                ts=os.time(),
+                dur=8-step+delay,
+                wait=delay,
+                step=step,
+                closed=closed,
             };
 
-            -- Check for valid actor skill with valid message - generic first step (excluding chainbound)
-            -- Include spells when SCH Immanence or BLU Azure Lore / Chain Affinity is active
-            -- Immanence and Chain Affinity buff status cleared on use
+        -- Check for valid actor skill with valid message - generic first step (excluding chainbound)
+        -- Include spells when SCH Immanence or BLU Azure Lore / Chain Affinity is active
+        -- Immanence and Chain Affinity buff status cleared on use
         elseif actionSkill and MessageTypes:contains(targetAction.Message) and (actionPacket.Type ~= 4 or (playerTable[actor])) then
             local delay = actionSkill and actionSkill.delay or 3
             targetTable[target.Id] = {
-                en = actionSkill.en,
-                property = GetAeonicProperty(actionSkill, actor),
-                ts = os.time(),
-                dur = 7 + delay,
-                wait = delay,
-                step = 1,
+                en=actionSkill.en,
+                property=GetAeonicProperty(actionSkill,actor),
+                ts=os.time(),
+                dur=7+delay,
+                wait=delay,
+                step=1,
             };
 
-            -- Check for valid actor skill with chainbound message - chainbound first step
-            -- Could be combined with previous first setp check
+        -- Check for valid actor skill with chainbound message - chainbound first step
+        -- Could be combined with previous first setp check
         elseif actionSkill and (targetAction.Message == 529) then
             targetTable[target.Id] = {
-                en = actionSkill.en,
-                property = actionSkill.skillchain,
-                ts = os.time(),
-                dur = 9,
-                wait = 2,
-                step = 1,
-                bound = targetAction.Param,
+                en=actionSkill.en,
+                property=actionSkill.skillchain,
+                ts=os.time(),
+                dur=9,
+                wait=2,
+                step=1,
+                bound=targetAction.Param,
             };
         end
 
@@ -878,18 +893,18 @@ ashita.events.register('packet_in', 'packet_in_cb', function(e)
             playerTable[actor][targetAction.Param] = os.time() + ChainBuffTypes[targetAction.Param].duration;
         end
 
-        -- Action Message - Clear buff when getting '206 - ${target}'s ${status} effect wears off'.
-        --  only works to clear local player
-    elseif e.id == 0x29 and struct.unpack('H', e.data, 0x18 + 1) == 206 and struct.unpack('I', e.data, 8 + 1) == playerID then
-        local effect = struct.unpack('H', e.data, 0xC + 1)
+    -- Action Message - Clear buff when getting '206 - ${target}'s ${status} effect wears off'.
+    --  only works to clear local player
+    elseif e.id == 0x29 and struct.unpack('H', e.data, 0x18+1) == 206 and struct.unpack('I', e.data, 8+1) == playerID then
+        local effect = struct.unpack('H', e.data, 0xC+1)
         if playerTable[playerID] and playerTable[playerID][effect] then
             playerTable[playerID][effect] = nil;
         end
 
-        -- Character Abilities (Weaponskills and BST/SMN PetSkills)
+    -- Character Abilities (Weaponskills and BST/SMN PetSkills)
     elseif e.id == 0x0AC then --and e.data:sub(5) ~= actionTable.lastAC then
-        actionTable.wepskill = T {};
-        actionTable.petskill = T {};
+        actionTable.wepskill = T{};
+        actionTable.petskill = T{};
 
         -- Packet contains one bit per ability to indicate if the ability is available
         -- * Byte in packet = floor(abilityID / 8) + 1
@@ -902,16 +917,16 @@ ashita.events.register('packet_in', 'packet_in_cb', function(e)
 
         -- Weaponskills
         local data = e.data:sub(5);
-        for k, v in pairs(skills[3]) do
-            if math.floor((data:byte(math.floor(k / 8) + 1) % 2 ^ (k % 8 + 1)) / 2 ^ (k % 8)) == 1 then
+        for k,v in pairs(skills[3]) do
+            if math.floor((data:byte(math.floor(k/8)+1)%2^(k%8+1))/2^(k%8)) == 1 then
                 table.insert(actionTable.wepskill, v);
             end
         end
 
         -- BST/SMN PetSkills - fix: skip if not BST or SMN?
         data = e.data:sub(69);
-        for k, v in pairs(skills.playerPet) do
-            if math.floor((data:byte(math.floor(k / 8) + 1) % 2 ^ (k % 8 + 1)) / 2 ^ (k % 8)) == 1 then
+        for k,v in pairs(skills.playerPet) do
+            if math.floor((data:byte(math.floor(k/8)+1)%2^(k%8+1))/2^(k%8)) == 1 then
                 table.insert(actionTable.petskill, v);
             end
         end
@@ -921,13 +936,13 @@ ashita.events.register('packet_in', 'packet_in_cb', function(e)
 
         --actionTable.lastAC = e.data:sub(5); --dedupe?
 
-        -- BLU spells - e.data:byte(5) == 0x10 indicates BLU, e.data:byte(6) == 0 indicates main job
+    -- BLU spells - e.data:byte(5) == 0x10 indicates BLU, e.data:byte(6) == 0 indicates main job
     elseif e.id == 0x44 and e.data:byte(5) == 0x10 and e.data:byte(6) == 0 then -- and e.data:sub(9, 18) ~= actionTable.last44 then
-        actionTable.bluskill = T {};
+        actionTable.bluskill = T{};
 
         --Iterate through bytes 8+1 through 27+1 - corresponds to the 20 BLU spell slots
-        for x = 8 + 1, 27 + 1 do
-            local match = skills[4][e.data:byte(x) + 512]
+        for x = 8+1, 27+1 do
+            local match = skills[4][e.data:byte(x)+512]
             if match then
                 table.insert(actionTable.bluskill, match);
             end
@@ -941,13 +956,13 @@ end);
 -- event: d3d_present
 -- desc: Event called when the Direct3D device is presenting a scene.
 --=============================================================================
-ashita.events.register('d3d_present', 'present_cb', function()
+ashita.events.register('d3d_present', 'present_cb', function ()
     -- Capture current time for comparison
     local now = os.time();
 
     -- Remove stale playerTable entries
-    for pk, pv in pairs(playerTable) do
-        for bk, bv in pairs(playerTable[pk]) do
+    for pk,pv in pairs(playerTable) do
+        for bk,bv in pairs(playerTable[pk]) do
             if now > bv then
                 playerTable[pk][bk] = nil;
             end
@@ -958,8 +973,8 @@ ashita.events.register('d3d_present', 'present_cb', function()
     end
 
     -- Remove stale targetTable entries
-    for k, v in pairs(targetTable) do
-        if v.ts and now - v.ts > v.dur then
+    for k,v in pairs(targetTable) do
+        if v.ts and now-v.ts > v.dur then
             targetTable[k] = nil;
         end
     end
@@ -997,15 +1012,15 @@ ashita.events.register('d3d_present', 'present_cb', function()
 
                 imgui.PushFont(defaultFont, scaledSize)
 
-                local timediff = now - targetTable[targetId].ts;
-                local timer = targetTable[targetId].dur - timediff;
+                local timediff = now-targetTable[targetId].ts;
+                local timer = targetTable[targetId].dur-timediff;
 
                 -- Timer
                 if not targetTable[targetId].closed then
                     if timediff < targetTable[targetId].wait then
-                        imgui.TextColored({ 1.0, 0.0, 0.0, 1.0 }, ('Wait  %d'):fmt(targetTable[targetId].wait - timediff));
+                        imgui.TextColored({ 1.0, 0.0, 0.0, 1.0 },('Wait  %d'):fmt(targetTable[targetId].wait-timediff));
                     else
-                        imgui.TextColored({ 0.0, 1.0, 0.0, 1.0 }, ('Go!   %d'):fmt(timer));
+                        imgui.TextColored({ 0.0, 1.0, 0.0, 1.0 },('Go!   %d'):fmt(timer));
                     end
                 else
                     imgui.Text(('Burst %d'):fmt(timer));
@@ -1019,13 +1034,13 @@ ashita.events.register('d3d_present', 'present_cb', function()
                 if targetTable[targetId].bound then
                     imgui.Text(('Chainbound Lv.%d'):fmt(targetTable[targetId].bound));
                 else
-                    for k, v in pairs(targetTable[targetId].property) do
+                    for k,v in pairs(targetTable[targetId].property) do
                         if k > 1 then
-                            imgui.SameLine(0, 0);
+                            imgui.SameLine(0,0);
                             imgui.Text(',');
                             imgui.SameLine();
                         end
-                        imgui.TextColored(GetPropertyColor(v), v);
+                        imgui.TextColored(GetPropertyColor(v),v);
                     end
                 end
                 imgui.SameLine();
@@ -1034,13 +1049,13 @@ ashita.events.register('d3d_present', 'present_cb', function()
                     imgui.SameLine();
                     imgui.Text(' (');
                     imgui.SameLine();
-                    for k, v in pairs(chainInfo[targetTable[targetId].property[1]].burst) do
+                    for k,v in pairs(chainInfo[targetTable[targetId].property[1]].burst) do
                         if k > 1 then
-                            imgui.SameLine(0, 0);
+                            imgui.SameLine(0,0);
                             imgui.Text(',');
                             imgui.SameLine();
                         end
-                        imgui.TextColored(GetPropertyColor(v), v);
+                        imgui.TextColored(GetPropertyColor(v),v);
                     end
                     imgui.SameLine();
                     imgui.Text(')');
@@ -1054,7 +1069,7 @@ ashita.events.register('d3d_present', 'present_cb', function()
                     --if not targetTable[targetId].skillchains then
                     --    targetTable[targetId].skillchains = skillchains;
                     --end
-                    for _, v in pairs(skillchains) do
+                    for _,v in pairs(skillchains) do
                         imgui.Text(v.outText);
                         imgui.SameLine();
                         imgui.TextColored(GetPropertyColor(v.outProp), v.outProp);
@@ -1068,7 +1083,7 @@ ashita.events.register('d3d_present', 'present_cb', function()
                 local scaledSize  = defaultSize * chains.settings.font_scale
 
                 imgui.PushFont(defaultFont, scaledSize)
-
+                
                 imgui.Text('');
                 imgui.Text('                 --- Chains ---                 ');
                 imgui.Text('         Click and drag to move display         ');
@@ -1091,7 +1106,7 @@ end);
 -- event: command
 -- desc: Event called when the addon is processing a command.
 --=============================================================================
-ashita.events.register('command', 'command_cb', function(e)
+ashita.events.register('command', 'command_cb', function (e)
     --[[ Valid Arguments
         e.mode       - (ReadOnly) The mode of the command.
         e.command    - (ReadOnly) The raw command string.
@@ -1132,7 +1147,7 @@ ashita.events.register('command', 'command_cb', function(e)
     --========================================================================
     -- Window management
     --========================================================================
-    if (#args == 2) and (args[2] == 'visible') then
+    if (#args == 2) and (args[2] == 'visible') then 
         chains.visible = not chains.visible;
     end
 
